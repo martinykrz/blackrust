@@ -1,5 +1,8 @@
+#![allow(dead_code)]
+use rand::seq::SliceRandom;
 use std::io::{self, BufRead};
 
+#[derive(Copy, Clone)]
 struct Card {
     suit: char,
     rank: char,
@@ -8,9 +11,17 @@ struct Card {
 impl Card {
     fn view_card(&self) {
         if self.suit == '\u{2665}' || self.suit == '\u{2666}' {
-            print!("\x1b[31;49;1m{}{}\x1b[0m", self.rank, self.suit)
+            if self.rank == 'T' {
+                print!("\x1b[31;49;1m10{}\x1b[0m", self.suit)
+            } else {
+                print!("\x1b[31;49;1m{}{}\x1b[0m", self.rank, self.suit)
+            }
         } else {
-            print!("{}{}", self.rank, self.suit)
+            if self.rank == 'T' {
+                print!("10{}", self.suit)
+            } else {
+                print!("{}{}", self.rank, self.suit)
+            }
         }
     }
 }
@@ -22,18 +33,38 @@ struct Money {
 }
 
 impl Money {
-    fn make_bet(&self, bet: u32) {
+    fn make_money(&mut self) {
+        let stdin = io::stdin();
+        let mut tmp = String::new();
+        print!("How much money do you have?: ");
+        stdin
+            .lock()
+            .read_line(&mut tmp)
+            .unwrap();
+        let money: u32 = tmp.parse::<u32>().unwrap();
+        self.wallet = money;
+    }
+
+    fn make_bet(&mut self) {
+        let stdin = io::stdin();
+        let mut tmp = String::new();
+        print!("How much do you bet?: ");
+        stdin
+            .lock()
+            .read_line(&mut tmp)
+            .unwrap(); 
+        let bet: u32 = tmp.parse::<u32>().unwrap();
         self.bet = bet;
         self.last_bet = self.bet;
         self.wallet -= self.bet;
     }
 
-    fn double(&self) {
+    fn double(&mut self) {
         self.wallet -= self.bet;
         self.bet *= 2;
     }
 
-    fn win(&self) {
+    fn win(&mut self) {
         self.wallet += self.bet;
     }
 
@@ -51,24 +82,36 @@ struct Deck {
 }
 
 impl Deck {
-    fn hit(&self) -> Card {
+    fn make_deck(&mut self) {
+        let ranks: [char;13] = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'A', 'J', 'Q', 'K'];
+        let suits: [char;4] = ['\u{2660}', '\u{2665}', '\u{2663}', '\u{2666}'];
+        for suit in suits {
+            for rank in ranks {
+                self.cards.push(Card{ suit, rank });
+            }
+        }
+        self.cards.shuffle(&mut rand::thread_rng());
+    }
+
+    fn hit(&mut self) -> Card {
         self.cards.pop().unwrap()
     }
 }
 
+#[derive(Clone)]
 struct Hand {
     cards: Vec<Card>,
 }
 
 impl Hand {
-    fn add_card(&self, card: Card) {
+    fn add_card(&mut self, card: Card) {
         self.cards.push(card)
     }
 
     fn get_value(&self) -> u8 {
         let mut value: u8 = 0;
         let mut has_ace: bool = false;
-        for card in self.cards {
+        for card in self.cards.clone() {
             value += match card.rank {
                 'T' | 'J' | 'Q' | 'K' => 10,
                 'A' => 1,
@@ -82,20 +125,14 @@ impl Hand {
         value
     }
 
-    fn clear_hand(&self) {
+    fn clear_hand(&mut self) {
         self.cards.clear()
     }
 
-    fn same_value(&self) -> bool {
-        if self.cards.len() == 2 {
-            self.cards[0].rank == self.cards[1].rank
-        }
-    }
-
     fn is_blackjack(&self) -> bool {
-        let mut len: bool = self.cards.len() == 2;
+        let len: bool = self.cards.len() == 2;
         let mut case: bool = true;
-        for card in self.cards {
+        for card in self.cards.clone() {
             case &= match card.rank {
                 'J' | 'Q' | 'K' => true,
                 _ => false,
@@ -105,7 +142,7 @@ impl Hand {
     }
 
     fn view_hand(&self) {
-        for card in self.cards {
+        for card in self.cards.clone() {
             card.view_card();
             print!(", ");
         }
@@ -120,29 +157,103 @@ struct Game {
 }
 
 impl Game {
-    fn player_turn(&self) {
+    fn player_turn(&mut self) {
         while self.player_hand.get_value() < 21 {
             let stdin = io::stdin();
-            let mut choice = String::new();
+            let mut tmp = String::new();
+            print!("Hit, Stand or Double?: ");
             stdin
                 .lock()
-                .read_line(&mut choice)
+                .read_line(&mut tmp)
                 .unwrap();
-            match *choice
-                .trim()
-                .chars()
-                .collect::<Vec<char>>()
-                .first()
-                .unwrap()
-                .to_lowercase() {
-                    'h' => {
-                        self.player_hand
-                            .add_card(self.deck.hit());
-                        print!("Player's hand: ");
-                        self.player_hand.view_hand();
-                    }
-                    //TODO
-                }
+            let choice: char = tmp
+                .parse::<char>()
+                .unwrap();
+            match choice {
+                'h' => {
+                    self.player_hand
+                        .add_card(self.deck.hit());
+                    print!("Player's hand: ");
+                    self.player_hand.view_hand();
+                },
+                'd' => {
+                    self.money.double();
+                    self.player_hand
+                        .add_card(self.deck.hit());
+                    print!("Player's hand: ");
+                    self.player_hand.view_hand();
+                },
+                's' => break,
+                _ => continue
+            }
         }
     }
+
+    fn dealer_turn(&mut self) {
+        while self.dealer_hand.get_value() < 17 {
+            self.dealer_hand.add_card(self.deck.hit());
+        }
+        print!("Dealer's hand: ");
+        self.dealer_hand.view_hand();
+    }
+
+    fn determine_winner(&mut self) {
+        if self.player_hand.is_blackjack() {
+            if self.dealer_hand.is_blackjack() {
+                println!("It's a tie.");
+            }
+            else {
+                println!("You win.");
+                self.money.win();
+            }
+        } else {
+            let player: u8 = self.player_hand.get_value();
+            let dealer: u8 = self.dealer_hand.get_value();
+            match (player, dealer) {
+                (player, dealer) if player > 21 || (!(dealer < 21) && dealer > player) => println!("You lose."),
+                (player, dealer) if dealer > 21 || (!(player < 21) && player > dealer) => { 
+                    println!("You win.");
+                    self.money.win();
+                },
+                _ => println!("It's a tie."),
+            }
+        }
+    }
+
+    fn init_game(&mut self) {
+        self.player_hand.clear_hand();
+        self.dealer_hand.clear_hand();
+        for _ in 0..2 {
+            self.player_hand.add_card(self.deck.hit());
+            self.dealer_hand.add_card(self.deck.hit());
+        }
+        if self.deck.cards.len() != 0 {
+            self.money.make_bet();
+            self.money.view_money();
+            print!("Dealer's hand: ");
+            self.dealer_hand.cards.first().unwrap().view_card();
+            print!("Player's hand: ");
+            self.player_hand.view_hand();
+        } else {
+            print!("Game Over!");
+        }
+    }
+
+    fn play(&mut self) {
+        self.deck.make_deck();
+        self.money.make_money();
+        while self.money.wallet > 0 {
+            self.init_game();
+            self.player_turn();
+            if self.player_hand.get_value() <= 21 {
+                self.dealer_turn();
+            }
+            self.determine_winner();
+        }
+    }
+}
+
+fn main() {
+    //TODO
+    //Make it play
 }
