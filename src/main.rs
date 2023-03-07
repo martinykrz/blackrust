@@ -1,8 +1,5 @@
-#![allow(dead_code)]
 use rand::seq::SliceRandom;
-use std::io;
-use std::io::BufRead;
-use std::env;
+use std::io::{self, BufRead};
 
 #[derive(Copy, Clone)]
 struct Card {
@@ -34,9 +31,22 @@ struct Money {
     last_bet: u32,
 }
 
+fn make_money() -> u32 {
+    println!("How much money do you have? ");
+    let mut input: String = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .expect("failed to read value");
+    let money = input.trim();
+    match money.parse::<u32>() {
+        Ok(i) => i,
+        Err(_) => 0,
+    }
+}
+
 impl Money {
     fn make_bet(&mut self) {
-        print!("How much do you bet?: ");
+        println!("How much do you bet? ");
         let mut input: String = String::new();
         io::stdin()
             .read_line(&mut input)
@@ -139,6 +149,7 @@ impl Hand {
             card.view_card();
             print!(", ");
         }
+        println!();
     }
 }
 
@@ -154,7 +165,7 @@ impl Game {
         while self.player_hand.get_value() < 21 {
             let stdin = io::stdin();
             let mut tmp = String::new();
-            print!("Hit, Stand or Double?: ");
+            println!("Hit, Stand or Double? ");
             stdin
                 .lock()
                 .read_line(&mut tmp)
@@ -166,14 +177,14 @@ impl Game {
                 'h' => {
                     self.player_hand
                         .add_card(self.deck.hit());
-                    print!("Player's hand: ");
+                    println!("Player's hand: ");
                     self.player_hand.view_hand();
                 },
                 'd' => {
                     self.money.double();
                     self.player_hand
                         .add_card(self.deck.hit());
-                    print!("Player's hand: ");
+                    println!("Player's hand: ");
                     self.player_hand.view_hand();
                 },
                 's' => break,
@@ -186,7 +197,7 @@ impl Game {
         while self.dealer_hand.get_value() < 17 {
             self.dealer_hand.add_card(self.deck.hit());
         }
-        print!("Dealer's hand: ");
+        println!("Dealer's hand: ");
         self.dealer_hand.view_hand();
     }
 
@@ -223,12 +234,12 @@ impl Game {
         if self.deck.cards.len() != 0 {
             self.money.make_bet();
             self.money.view_money();
-            print!("Dealer's hand: ");
+            println!("Dealer's hand: ");
             self.dealer_hand.cards.first().unwrap().view_card();
-            print!("Player's hand: ");
+            println!("\nPlayer's hand: ");
             self.player_hand.view_hand();
         } else {
-            print!("Game Over!");
+            println!("Game Over!");
         }
     }
 
@@ -245,14 +256,12 @@ impl Game {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
     let mut game = Game{ 
         deck: Deck{ 
             cards: make_deck() 
         }, 
         money: Money{ 
-            wallet: args[1]
-                .parse::<u32>().unwrap(), 
+            wallet: make_money(),
             bet: 0, 
             last_bet: 0 
         }, 
