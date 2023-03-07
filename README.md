@@ -2,6 +2,6 @@
 A CLI BlackJack implementation written in Rust
 
 ## TODO
-* Finish
+* Debug
 * More visual pleasing
 * Add GUI
