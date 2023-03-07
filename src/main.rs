@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use rand::seq::SliceRandom;
-use std::io::{self, BufRead};
+use std::io;
+use std::io::BufRead;
+use std::env;
 
 #[derive(Copy, Clone)]
 struct Card {
@@ -33,28 +35,17 @@ struct Money {
 }
 
 impl Money {
-    fn make_money(&mut self) {
-        let stdin = io::stdin();
-        let mut tmp = String::new();
-        print!("How much money do you have?: ");
-        stdin
-            .lock()
-            .read_line(&mut tmp)
-            .unwrap();
-        let money: u32 = tmp.parse::<u32>().unwrap();
-        self.wallet = money;
-    }
-
     fn make_bet(&mut self) {
-        let stdin = io::stdin();
-        let mut tmp = String::new();
         print!("How much do you bet?: ");
-        stdin
-            .lock()
-            .read_line(&mut tmp)
-            .unwrap(); 
-        let bet: u32 = tmp.parse::<u32>().unwrap();
-        self.bet = bet;
+        let mut input: String = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .expect("failed to read value");
+        let bet = input.trim();
+        self.bet = match bet.parse::<u32>() {
+            Ok(i) => i,
+            Err(_) => 0,
+        };
         self.last_bet = self.bet;
         self.wallet -= self.bet;
     }
@@ -81,18 +72,20 @@ struct Deck {
     cards: Vec<Card>,
 }
 
-impl Deck {
-    fn make_deck(&mut self) {
-        let ranks: [char;13] = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'A', 'J', 'Q', 'K'];
-        let suits: [char;4] = ['\u{2660}', '\u{2665}', '\u{2663}', '\u{2666}'];
-        for suit in suits {
-            for rank in ranks {
-                self.cards.push(Card{ suit, rank });
-            }
+fn make_deck() -> Vec<Card> {
+    let mut deck = Vec::new();
+    let ranks: [char;13] = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'A', 'J', 'Q', 'K'];
+    let suits: [char;4] = ['\u{2660}', '\u{2665}', '\u{2663}', '\u{2666}'];
+    for suit in suits {
+        for rank in ranks {
+            deck.push(Card{ suit, rank });
         }
-        self.cards.shuffle(&mut rand::thread_rng());
     }
+    deck.shuffle(&mut rand::thread_rng());
+    deck
+}
 
+impl Deck {
     fn hit(&mut self) -> Card {
         self.cards.pop().unwrap()
     }
@@ -240,8 +233,6 @@ impl Game {
     }
 
     fn play(&mut self) {
-        self.deck.make_deck();
-        self.money.make_money();
         while self.money.wallet > 0 {
             self.init_game();
             self.player_turn();
@@ -254,6 +245,23 @@ impl Game {
 }
 
 fn main() {
-    //TODO
-    //Make it play
+    let args: Vec<String> = env::args().collect();
+    let mut game = Game{ 
+        deck: Deck{ 
+            cards: make_deck() 
+        }, 
+        money: Money{ 
+            wallet: args[1]
+                .parse::<u32>().unwrap(), 
+            bet: 0, 
+            last_bet: 0 
+        }, 
+        player_hand: Hand{ 
+            cards: Vec::new() 
+        }, 
+        dealer_hand: Hand{ 
+            cards: Vec::new() 
+        } 
+    };
+    game.play()
 }
