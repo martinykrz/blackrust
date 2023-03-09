@@ -1,5 +1,5 @@
 use rand::seq::SliceRandom;
-use std::io::{self, BufRead};
+use std::io;
 
 #[derive(Copy, Clone)]
 struct Card {
@@ -163,17 +163,13 @@ struct Game {
 impl Game {
     fn player_turn(&mut self) {
         while self.player_hand.get_value() < 21 {
-            let stdin = io::stdin();
-            let mut tmp = String::new();
             println!("Hit, Stand or Double? ");
-            stdin
-                .lock()
-                .read_line(&mut tmp)
-                .unwrap();
-            let choice: char = tmp
-                .parse::<char>()
-                .unwrap();
-            match choice {
+            let mut input = String::new();
+            io::stdin()
+                .read_line(&mut input)
+                .expect("failed to read value");
+            let choice = input.trim();
+            match choice.parse::<char>().unwrap() {
                 'h' => {
                     self.player_hand
                         .add_card(self.deck.hit());
