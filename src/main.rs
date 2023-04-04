@@ -54,7 +54,7 @@ impl Money {
         let bet = input.trim();
         self.bet = match bet.parse::<u32>() {
             Ok(i) => i,
-            Err(_) => 0,
+            Err(_) => if self.last_bet != 0 { self.last_bet } else { 0 },
         };
         self.last_bet = self.bet;
         self.wallet -= self.bet;
