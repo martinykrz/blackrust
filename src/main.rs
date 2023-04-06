@@ -209,13 +209,17 @@ impl Game {
         } else {
             let player: u8 = self.player_hand.get_value();
             let dealer: u8 = self.dealer_hand.get_value();
-            match (player, dealer) {
-                (player, dealer) if player > 21 || (!(dealer < 21) && dealer > player) => println!("You lose."),
-                (player, dealer) if dealer > 21 || (!(player < 21) && player > dealer) => { 
+            if player <= 21 && dealer != 21 {
+                if dealer > 21 || (dealer < 21 && player > dealer) {
                     println!("You win.");
                     self.money.win();
-                },
-                _ => println!("It's a tie."),
+                } else {
+                    println!("You lose.");
+                }
+            } else if player == dealer {
+                println!("It's a tie.");
+            } else {
+                println!("You lose.");
             }
         }
     }
