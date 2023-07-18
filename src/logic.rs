@@ -23,6 +23,25 @@ impl Card {
             }
         }
     }
+
+    fn view_card_image(&self) -> String {
+        let suit = match self.suit {
+            '\u{2260}' => "spades",
+            '\u{2263}' => "clubs",
+            '\u{2265}' => "hearts",
+            '\u{2266}' => "diamonds",
+            _ => ""
+        };
+        let rank = match self.rank {
+            'T' => "10".to_string(),
+            'J' => "jack".to_string(),
+            'Q' => "queen".to_string(),
+            'K' => "king".to_string(),
+            'A' => "ace".to_string(),
+            _ => format!("0{}", self.rank)
+        };
+        format!("/{}_{}.png", rank, suit)
+    }
 }
 
 struct Money {
@@ -34,18 +53,7 @@ struct Money {
 impl Default for Money {
     fn default() -> Self {
         Money {
-            wallet: {
-                println!("How much money do you have? ");
-                let mut input: String = String::new();
-                io::stdin()
-                    .read_line(&mut input)
-                    .expect("failed to read value");
-                let money = input.trim().parse::<u32>();
-                match money {
-                    Ok(i) => i,
-                    Err(_) => 0,
-                }
-            },
+            wallet: 0,
             bet: 0,
             last_bet: 0
         }
@@ -53,6 +61,19 @@ impl Default for Money {
 }
 
 impl Money {
+    fn make_wallet(&mut self) {
+        println!("How much money do you have? ");
+        let mut input: String = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .expect("failed to read value");
+        let money = input.trim().parse::<u32>();
+        self.wallet = match money {
+            Ok(i) => i,
+            Err(_) => 0,
+        };
+    }
+
     fn make_bet(&mut self) {
         println!("How much do you bet? ");
         let mut input: String = String::new();
@@ -140,7 +161,7 @@ impl Hand {
             value += match card.rank {
                 'T' | 'J' | 'Q' | 'K' => 10,
                 'A' => 1,
-                _ => card.rank.to_digit(10).unwrap() as u8
+                _ => (card.rank as u8) - ('0' as u8)
             };
             has_ace |= card.rank == 'A';
         }
@@ -172,6 +193,13 @@ impl Hand {
             print!(", ");
         }
         println!();
+    }
+
+    fn view_hand_images(&self) -> Vec<String> {
+        self.cards
+            .iter()
+            .map(|card| card.view_card_image())
+            .collect()
     }
 }
 
