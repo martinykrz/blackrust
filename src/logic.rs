@@ -44,7 +44,7 @@ impl Card {
     }
 }
 
-struct Money {
+pub struct Money {
     wallet: u32,
     bet: u32,
     last_bet: u32,
@@ -104,6 +104,10 @@ impl Money {
         } else {
             println!("Wallet: {}", self.wallet)
         }
+    }
+
+    fn view_money_raw(&self) -> (u32, u32) {
+        (self.wallet, self.bet)
     }
 }
 
@@ -311,7 +315,10 @@ impl Game {
             self.money.make_bet();
             self.money.view_money();
             println!("Dealer's hand: ");
-            self.dealer_hand.cards.first().unwrap().view_card();
+            self.dealer_hand.cards
+                .first()
+                .unwrap()
+                .view_card();
             println!("\nPlayer's hand: ");
             self.player_hand.view_hand();
         } else {
@@ -320,6 +327,7 @@ impl Game {
     }
 
     pub fn play(&mut self) {
+        self.money.make_wallet();
         while self.money.wallet > 0 {
             self.init_game();
             self.player_turn();
