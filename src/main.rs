@@ -1,11 +1,11 @@
 pub mod logic;
-use logic::*; 
+// use logic::*; 
 use ggez::{
     event,
     glam::Vec2,
     conf::WindowMode,
     graphics::{self, Color, DrawParam},
-    input::keyboard::{KeyCode, KeyInput},
+    // input::keyboard::{KeyCode, KeyInput},
     Context, GameResult
 };
 use std::{
@@ -13,24 +13,46 @@ use std::{
     path
 };
 
-struct MainState {
+#[derive(Clone)]
+struct ImageCard {
     image: graphics::Image,
     dst: Vec2,
+}
+
+struct MainState {
+    card_1: ImageCard,
+    card_2: ImageCard,
+    card_3: ImageCard,
+    card_4: ImageCard,
     scale: Vec2,
-    text: String,
 }
 
 impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
-        let image = graphics::Image::from_path(ctx, "/ace_spades.png")?;
         let scale = Vec2::new(0.10, 0.10);
         let dst = Vec2::new(0.0, 0.0);
-        let text = String::new();
-        let state = MainState {
-            image,
+        let card_1 = ImageCard {
+            image: graphics::Image::from_path(ctx, "/ace_spades.png")?,
             dst,
+        };
+        let card_2 = ImageCard {
+            image: graphics::Image::from_path(ctx, "/ace_hearts.png")?,
+            dst,
+        };
+        let card_3 = ImageCard {
+            image: graphics::Image::from_path(ctx, "/ace_clubs.png")?,
+            dst,
+        };
+        let card_4 = ImageCard {
+            image: graphics::Image::from_path(ctx, "/ace_diamonds.png")?,
+            dst,
+        };
+        let state = MainState {
+            card_1,
+            card_2,
+            card_3,
+            card_4,
             scale,
-            text,
         };
         Ok(state)
     }
@@ -38,31 +60,20 @@ impl MainState {
 
 impl event::EventHandler<ggez::GameError> for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
+        // General formula
+        // 1. width + 0.0 - (image_width) / 2.0
+        // 2. width - 150.0 - (image_width) / 2.0 ; width + 150.0 - (image_width) / 2.0
+        // 3. width - 300.0 - (image_width) / 2.0 ; width + 0.0 - (image_width) / 2.0 ; width + 300.0 - (image_width) / 2.0
         let (width, height) = ctx.gfx.size();
-        let pos_x = (width - (self.image.clone().width() as f32) * self.scale.x) / 2.0;
-        let pos_y = (height - (self.image.clone().height() as f32) * self.scale.y) / 2.0;
-        self.dst = Vec2::new(pos_x, pos_y);
-        Ok(())
-    }
-
-    fn key_down_event(&mut self, _ctx: &mut Context, input: KeyInput, _repeat: bool) -> GameResult {
-        let value = match input.keycode {
-            Some(KeyCode::Key0) => Some('0'),
-            Some(KeyCode::Key1) => Some('1'),
-            Some(KeyCode::Key2) => Some('2'),
-            Some(KeyCode::Key3) => Some('3'),
-            Some(KeyCode::Key4) => Some('4'),
-            Some(KeyCode::Key5) => Some('5'),
-            Some(KeyCode::Key6) => Some('6'),
-            Some(KeyCode::Key7) => Some('7'),
-            Some(KeyCode::Key8) => Some('8'),
-            Some(KeyCode::Key9) => Some('9'),
-            _ => None,
-        };
-        match value {
-            Some(c) => self.text.push(c),
-            None => ()
-        }
+        let card_1_pos_x = (width - 450.0 - (self.card_1.clone().image.width() as f32) * self.scale.x) / 2.0;
+        let card_2_pos_x = (width - 150.0 - (self.card_2.clone().image.width() as f32) * self.scale.x) / 2.0;
+        let card_3_pos_x = (width + 150.0 - (self.card_3.clone().image.width() as f32) * self.scale.x) / 2.0;
+        let card_4_pos_x = (width + 450.0 - (self.card_3.clone().image.width() as f32) * self.scale.x) / 2.0;
+        let pos_y = height - (self.card_1.clone().image.height() as f32) * self.scale.y;
+        self.card_1.dst = Vec2::new(card_1_pos_x, pos_y);
+        self.card_2.dst = Vec2::new(card_2_pos_x, pos_y);
+        self.card_3.dst = Vec2::new(card_3_pos_x, pos_y);
+        self.card_4.dst = Vec2::new(card_4_pos_x, pos_y);
         Ok(())
     }
 
@@ -71,16 +82,28 @@ impl event::EventHandler<ggez::GameError> for MainState {
             ctx,
             Color::from([0.1, 0.2, 0.3, 1.0])
         );
-        let text = graphics::Text::new(self.text.clone());
         canvas.draw(
-            &text,
+            &self.card_1.image,
             DrawParam::new()
-                .dest(Vec2::new(10.0, 10.0))
+                .dest(self.card_1.dst)
+                .scale(self.scale)
         );
         canvas.draw(
-            &self.image,
+            &self.card_2.image,
             DrawParam::new()
-                .dest(self.dst)
+                .dest(self.card_2.dst)
+                .scale(self.scale)
+        );
+        canvas.draw(
+            &self.card_3.image,
+            DrawParam::new()
+                .dest(self.card_3.dst)
+                .scale(self.scale)
+        );
+        canvas.draw(
+            &self.card_4.image,
+            DrawParam::new()
+                .dest(self.card_4.dst)
                 .scale(self.scale)
         );
         canvas.finish(ctx)?;
@@ -88,7 +111,7 @@ impl event::EventHandler<ggez::GameError> for MainState {
     }
 }
 
-pub fn test_gui() -> GameResult {
+pub fn main() -> ggez::GameResult {
     let assets_dir = if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
         let mut path = path::PathBuf::from(manifest_dir);
         path.push("resources");
@@ -99,16 +122,10 @@ pub fn test_gui() -> GameResult {
     let cb = ggez::ContextBuilder::new("card", "martinykrz")
         .window_mode(
             WindowMode::default()
-                .resizable(true)
-        )
+            .resizable(true)
+            )
         .add_resource_path(assets_dir);
     let (mut ctx, event_loop) = cb.build()?;
     let state = MainState::new(&mut ctx)?;
     event::run(ctx, event_loop, state)
-}
-
-fn main() -> ggez::GameResult {
-    /* let mut game = Game::default();
-    game.play() */
-    test_gui()
 }
