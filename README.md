@@ -2,6 +2,9 @@
 A CLI BlackJack implementation written in Rust
 
 ## TODO
-* Add Split method
+### Important
+* **Add Split method**
+
+### Once it's done
 * More visual pleasing
 * Add GUI
