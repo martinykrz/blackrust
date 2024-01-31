@@ -23,30 +23,12 @@ impl Card {
             }
         }
     }
-
-    fn view_card_image(&self) -> String {
-        let suit = match self.suit {
-            '\u{2260}' => "spades",
-            '\u{2263}' => "clubs",
-            '\u{2265}' => "hearts",
-            '\u{2266}' => "diamonds",
-            _ => ""
-        };
-        let rank = match self.rank {
-            'T' => "10".to_string(),
-            'J' => "jack".to_string(),
-            'Q' => "queen".to_string(),
-            'K' => "king".to_string(),
-            'A' => "ace".to_string(),
-            _ => format!("0{}", self.rank)
-        };
-        format!("/{}_{}.png", rank, suit)
-    }
 }
 
 pub struct Money {
     wallet: u32,
     bet: u32,
+    split_bet: u32,
     last_bet: u32,
 }
 
@@ -55,6 +37,7 @@ impl Default for Money {
         Money {
             wallet: 0,
             bet: 0,
+            split_bet: 0,
             last_bet: 0
         }
     }
@@ -74,28 +57,39 @@ impl Money {
         };
     }
 
-    fn make_bet(&mut self) {
-        println!("How much do you bet? ");
+    fn make_bet(&mut self, split: bool) {
+        if split {
+            println!("How much to the split? ");
+        } else {
+           println!("How much do you bet? ");
+        }
         let mut input: String = String::new();
         io::stdin()
             .read_line(&mut input)
             .expect("failed to read value");
         let bet = input.trim();
-        self.bet = match bet.parse::<u32>() {
-            Ok(i) => i,
-            Err(_) => if self.last_bet != 0 { self.last_bet } else { 0 },
-        };
+        if split {
+            self.split_bet = match bet.parse::<u32>() {
+                Ok(i) => i,
+                Err(_) => if self.last_bet != 0 { self.last_bet } else { 0 },
+            };
+        } else {
+            self.bet = match bet.parse::<u32>() {
+                Ok(i) => i,
+                Err(_) => if self.last_bet != 0 { self.last_bet } else { 0 },
+            };
+        }
         self.last_bet = self.bet;
         self.wallet -= self.bet;
     }
 
-    fn double(&mut self) {
-        self.wallet -= self.bet;
-        self.bet *= 2;
+    fn double(&mut self, split: bool) {
+        self.wallet -= if split { self.split_bet } else { self.bet };
+        if split { self.split_bet *= 2 } else { self.bet *= 2 } ;
     }
 
-    fn win(&mut self) {
-        self.wallet += self.bet;
+    fn win(&mut self, split: bool) {
+        self.wallet += if split { self.split_bet } else { self.bet };
     }
 
     fn view_money(&self) {
@@ -104,10 +98,6 @@ impl Money {
         } else {
             println!("Wallet: {}", self.wallet)
         }
-    }
-
-    fn view_money_raw(&self) -> (u32, u32) {
-        (self.wallet, self.bet)
     }
 }
 
@@ -143,40 +133,77 @@ impl Deck {
 #[derive(Clone)]
 pub struct Hand {
     cards: Vec<Card>,
+    split: Vec<Card>,
 }
 
 impl Default for Hand {
     fn default() -> Self {
         Hand {
-            cards: Vec::new()
+            cards: Vec::new(),
+            split: Vec::new()
         }
     }
 }
 
 impl Hand {
-    fn add_card(&mut self, card: Card) {
-        self.cards.push(card)
+    fn add_card(&mut self, card: Card, split: bool) {
+        if split {
+            self.split.push(card)
+        } else {
+            self.cards.push(card)
+        }
     }
 
-    fn get_value(&self) -> u8 {
-        let mut value: u8 = 0;
+    fn make_split(&mut self) -> bool {
+        let mut split: bool = false;
+        if self.cards.len() == 2 {
+            if self.cards.clone().first().unwrap().rank == self.cards.clone().last().unwrap().rank {
+                split = true;
+                let last_card: Option<Card> = self.cards.pop();
+                match last_card {
+                    Some(c) => self.split.push(c),
+                    None => {},
+                }
+            }
+        }
+        split
+    }
+
+    fn get_value(&self) -> (u8, u8) {
+        let mut value_main: u8 = 0;
+        let mut value_split: u8 = 0;
         let mut has_ace: bool = false;
         for card in self.cards.clone() {
-            value += match card.rank {
+            value_main += match card.rank {
                 'T' | 'J' | 'Q' | 'K' => 10,
                 'A' => 1,
                 _ => (card.rank as u8) - ('0' as u8)
             };
             has_ace |= card.rank == 'A';
         }
-        if has_ace && value + 10 <= 21 {
-            value += 10;
+        if has_ace && value_main + 10 <= 21 {
+            value_main += 10;
         }
-        value
+        if !self.split.is_empty() {
+            has_ace = false;
+            for card in self.split.clone() {
+                value_split += match card.rank {
+                    'T' | 'J' | 'Q' | 'K' => 10,
+                    'A' => 1,
+                    _ => (card.rank as u8) - ('0' as u8)
+                };
+                has_ace |= card.rank == 'A';
+            }
+            if has_ace && value_split + 10 <= 21 {
+                value_split += 10;
+            }
+        }
+        (value_main, value_split)
     }
 
     fn clear_hand(&mut self) {
-        self.cards.clear()
+        self.cards.clear();
+        self.split.clear();
     }
 
     fn is_blackjack(&self) -> bool {
@@ -192,19 +219,34 @@ impl Hand {
     }
 
     fn view_hand(&self) {
-        for card in self.cards.clone() {
-            card.view_card();
-            print!(", ");
+        if self.split.is_empty() {
+            for card in self.cards.clone() {
+                card.view_card();
+                print!(", ");
+            }
+            println!("\nValue: {}", self.get_value().0);
+        } else {
+            print!("Hand 1: ");
+            for card in self.cards.clone() {
+                card.view_card();
+                print!(", ");
+            }
+            println!("\nValue: {}", self.get_value().0);
+            print!("Hand 2: ");
+            for card in self.split.clone() {
+                card.view_card();
+                print!(", ");
+            }
+            println!("\nValue: {}", self.get_value().1);
         }
-        println!();
     }
+}
 
-    fn view_hand_images(&self) -> Vec<String> {
-        self.cards
-            .iter()
-            .map(|card| card.view_card_image())
-            .collect()
-    }
+pub enum GameStatus {
+    Start,
+    Win,
+    Tie,
+    Lose,
 }
 
 pub struct Game {
@@ -212,12 +254,7 @@ pub struct Game {
     money: Money,
     player_hand: Hand,
     dealer_hand: Hand,
-    /* Game Status
-     * -1: dealers win
-     * 0: tie
-     * 1: player win
-    */
-    game_status: i8,
+    game_status: GameStatus,
 }
 
 impl Default for Game {
@@ -227,15 +264,16 @@ impl Default for Game {
             money: Money::default(), 
             player_hand: Hand::default(), 
             dealer_hand: Hand::default(), 
-            game_status: 0
+            game_status: GameStatus::Start,
         }
     }
 }
 
 impl Game {
     fn player_turn(&mut self) {
-        while self.player_hand.get_value() < 21 {
-            println!("Hit, Stand or Double? ");
+        let mut split: bool = false;
+        while self.player_hand.get_value().0 < 21 {
+            println!("Hit, sPlit, Stand or Double? ");
             let mut input = String::new();
             io::stdin()
                 .read_line(&mut input)
@@ -246,26 +284,67 @@ impl Game {
             match choice {
                 Ok('h') => {
                     self.player_hand
-                        .add_card(self.deck.hit());
+                        .add_card(self.deck.hit(), split);
                     println!("Player's hand: ");
                     self.player_hand.view_hand();
                 },
                 Ok('d') => {
-                    self.money.double();
+                    self.money.double(split);
                     self.player_hand
-                        .add_card(self.deck.hit());
+                        .add_card(self.deck.hit(), split);
                     println!("Player's hand: ");
                     self.player_hand.view_hand();
+                },
+                Ok('p') => {
+                    split = self.player_hand.make_split();
+                    if split {
+                        self.money.make_bet(split);
+                        println!("Player's hand: ");
+                        self.player_hand.view_hand();
+                    } else {
+                        println!("Conditions not met to split!");
+                        continue;
+                    }
                 },
                 Ok('s') => break,
                 _ => continue
             }
         }
+        if split {
+            println!("Split Hand");
+            while self.player_hand.get_value().1 < 21 {
+                println!("Hit, Stand or Double? ");
+                let mut input = String::new();
+                io::stdin()
+                    .read_line(&mut input)
+                    .expect("failed to read value");
+                let choice = input
+                    .trim()
+                    .parse::<char>();
+                match choice {
+                    Ok('h') => {
+                        self.player_hand
+                            .add_card(self.deck.hit(), split);
+                        println!("Player's hand: ");
+                        self.player_hand.view_hand();
+                    },
+                    Ok('d') => {
+                        self.money.double(split);
+                        self.player_hand
+                            .add_card(self.deck.hit(), split);
+                        println!("Player's hand: ");
+                        self.player_hand.view_hand();
+                    },
+                    Ok('s') => break,
+                    _ => continue
+                }
+            }
+        }
     }
 
     fn dealer_turn(&mut self) {
-        while self.dealer_hand.get_value() < 17 {
-            self.dealer_hand.add_card(self.deck.hit());
+        while self.dealer_hand.get_value().0 < 17 {
+            self.dealer_hand.add_card(self.deck.hit(), false);
         }
         println!("Dealer's hand: ");
         self.dealer_hand.view_hand();
@@ -274,32 +353,52 @@ impl Game {
     fn determine_winner(&mut self) {
         if self.player_hand.is_blackjack() {
             if self.dealer_hand.is_blackjack() {
-                self.game_status = 0;
+                self.game_status = GameStatus::Tie;
                 println!("It's a tie.");
             }
             else {
-                self.game_status = 1;
+                self.game_status = GameStatus::Win;
                 println!("You win.");
-                self.money.win();
+                self.money.win(false);
             }
         } else {
-            let player: u8 = self.player_hand.get_value();
-            let dealer: u8 = self.dealer_hand.get_value();
-            if player <= 21 && dealer != 21 {
-                if dealer > 21 || (dealer < 21 && player > dealer) {
-                    self.game_status = 1;
+            let player: (u8, u8) = self.player_hand.get_value();
+            let dealer: u8 = self.dealer_hand.get_value().0;
+            let main_player: u8 = player.0;
+            let other_player: u8 = player.1;
+            if main_player <= 21 && dealer != 21 {
+                if dealer > 21 || (dealer < 21 && main_player > dealer) {
+                    self.game_status = GameStatus::Win;
                     println!("You win.");
-                    self.money.win();
+                    self.money.win(false);
                 } else {
-                    self.game_status = -1;
+                    self.game_status = GameStatus::Lose;
                     println!("You lose.");
                 }
-            } else if player == dealer {
-                self.game_status = 0;
+            } else if main_player == dealer {
+                self.game_status = GameStatus::Tie;
                 println!("It's a tie.");
             } else {
-                self.game_status = -1;
+                self.game_status = GameStatus::Lose;
                 println!("You lose.");
+            }
+            if other_player != 0 {
+                if other_player <= 21 && dealer != 21 {
+                    if dealer > 21 || (dealer < 21 && other_player > dealer) {
+                        self.game_status = GameStatus::Win;
+                        println!("You win.");
+                        self.money.win(true);
+                    } else {
+                        self.game_status = GameStatus::Lose;
+                        println!("You lose.");
+                    }
+                } else if other_player == dealer {
+                    self.game_status = GameStatus::Tie;
+                    println!("It's a tie.");
+                } else {
+                    self.game_status = GameStatus::Lose;
+                    println!("You lose.");
+                }
             }
         }
     }
@@ -308,11 +407,11 @@ impl Game {
         self.player_hand.clear_hand();
         self.dealer_hand.clear_hand();
         for _ in 0..2 {
-            self.player_hand.add_card(self.deck.hit());
-            self.dealer_hand.add_card(self.deck.hit());
+            self.player_hand.add_card(self.deck.hit(), false);
+            self.dealer_hand.add_card(self.deck.hit(), false);
         }
         if self.deck.cards.len() != 0 {
-            self.money.make_bet();
+            self.money.make_bet(false);
             self.money.view_money();
             println!("Dealer's hand: ");
             self.dealer_hand.cards
@@ -331,7 +430,7 @@ impl Game {
         while self.money.wallet > 0 {
             self.init_game();
             self.player_turn();
-            if self.player_hand.get_value() <= 21 {
+            if self.player_hand.get_value().0 <= 21 || self.player_hand.get_value().1 <= 21 {
                 self.dealer_turn();
             }
             self.determine_winner();
