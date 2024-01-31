@@ -1,10 +1,7 @@
 pub mod logic;
-// use logic::*; 
-use std::{
-    env,
-    path
-};
+use logic::*; 
 
 fn main() {
-    println!("No GUI for now!")
+    let mut game: Game = Game::default();
+    game.play()
 }
