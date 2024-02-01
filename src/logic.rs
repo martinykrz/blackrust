@@ -1,7 +1,7 @@
 use rand::seq::SliceRandom;
 use std::io;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Card {
     suit: char,
     rank: char,
@@ -126,7 +126,10 @@ impl Default for Deck {
 
 impl Deck {
     fn hit(&mut self) -> Card {
-        self.cards.pop().unwrap()
+        let last_card = self.cards.pop().unwrap();
+        self.cards.push(last_card.clone());
+        self.cards.shuffle(&mut rand::thread_rng());
+        last_card
     }
 }
 
@@ -218,7 +221,7 @@ impl Hand {
         len && case
     }
 
-    fn view_hand(&self) {
+    pub fn view_hand(&self) {
         if self.split.is_empty() {
             for card in self.cards.clone() {
                 card.view_card();
@@ -243,7 +246,6 @@ impl Hand {
 }
 
 pub enum GameStatus {
-    Start,
     Win,
     Tie,
     Lose,
@@ -254,7 +256,6 @@ pub struct Game {
     money: Money,
     player_hand: Hand,
     dealer_hand: Hand,
-    game_status: GameStatus,
 }
 
 impl Default for Game {
@@ -264,7 +265,6 @@ impl Default for Game {
             money: Money::default(), 
             player_hand: Hand::default(), 
             dealer_hand: Hand::default(), 
-            game_status: GameStatus::Start,
         }
     }
 }
@@ -350,57 +350,45 @@ impl Game {
         self.dealer_hand.view_hand();
     }
 
-    fn determine_winner(&mut self) {
-        if self.player_hand.is_blackjack() {
-            if self.dealer_hand.is_blackjack() {
-                self.game_status = GameStatus::Tie;
-                println!("It's a tie.");
-            }
-            else {
-                self.game_status = GameStatus::Win;
+    fn determine_winner(&mut self) -> GameStatus {
+        let mut status;
+        let player: (u8, u8) = self.player_hand.get_value();
+        let dealer: u8 = self.dealer_hand.get_value().0;
+        let main_player: u8 = player.0;
+        let other_player: u8 = player.1;
+        
+        let mut player_wins: bool = main_player <= 21 && (dealer > 21 || main_player > dealer);
+        player_wins |= self.player_hand.is_blackjack() && !self.dealer_hand.is_blackjack();
+
+        if player_wins {
+            status = GameStatus::Win;
+            println!("You win.");
+            self.money.win(false);
+        } else if dealer > 21 || main_player == dealer {
+            status = GameStatus::Tie;
+            println!("It's a tie");
+        } else {
+            status = GameStatus::Lose;
+            println!("You lose.");
+        }
+
+        if other_player != 0 {
+            player_wins = other_player <= 21 && (dealer > 21 || other_player > dealer);
+
+            if player_wins {
+                status = GameStatus::Win;
                 println!("You win.");
                 self.money.win(false);
-            }
-        } else {
-            let player: (u8, u8) = self.player_hand.get_value();
-            let dealer: u8 = self.dealer_hand.get_value().0;
-            let main_player: u8 = player.0;
-            let other_player: u8 = player.1;
-            if main_player <= 21 && dealer != 21 {
-                if dealer > 21 || (dealer < 21 && main_player > dealer) {
-                    self.game_status = GameStatus::Win;
-                    println!("You win.");
-                    self.money.win(false);
-                } else {
-                    self.game_status = GameStatus::Lose;
-                    println!("You lose.");
-                }
-            } else if main_player == dealer {
-                self.game_status = GameStatus::Tie;
-                println!("It's a tie.");
+            } else if dealer > 21 || other_player == dealer {
+                status = GameStatus::Tie;
+                println!("It's a tie");
             } else {
-                self.game_status = GameStatus::Lose;
+                status = GameStatus::Lose;
                 println!("You lose.");
             }
-            if other_player != 0 {
-                if other_player <= 21 && dealer != 21 {
-                    if dealer > 21 || (dealer < 21 && other_player > dealer) {
-                        self.game_status = GameStatus::Win;
-                        println!("You win.");
-                        self.money.win(true);
-                    } else {
-                        self.game_status = GameStatus::Lose;
-                        println!("You lose.");
-                    }
-                } else if other_player == dealer {
-                    self.game_status = GameStatus::Tie;
-                    println!("It's a tie.");
-                } else {
-                    self.game_status = GameStatus::Lose;
-                    println!("You lose.");
-                }
-            }
         }
+            
+        status
     }
 
     fn init_game(&mut self) {
@@ -410,19 +398,15 @@ impl Game {
             self.player_hand.add_card(self.deck.hit(), false);
             self.dealer_hand.add_card(self.deck.hit(), false);
         }
-        if self.deck.cards.len() != 0 {
-            self.money.make_bet(false);
-            self.money.view_money();
-            println!("Dealer's hand: ");
-            self.dealer_hand.cards
-                .first()
-                .unwrap()
-                .view_card();
-            println!("\nPlayer's hand: ");
-            self.player_hand.view_hand();
-        } else {
-            println!("Game Over!");
-        }
+        self.money.make_bet(false);
+        self.money.view_money();
+        println!("Dealer's hand: ");
+        self.dealer_hand.cards
+            .first()
+            .unwrap()
+            .view_card();
+        println!("\nPlayer's hand: ");
+        self.player_hand.view_hand();
     }
 
     pub fn play(&mut self) {
@@ -433,7 +417,7 @@ impl Game {
             if self.player_hand.get_value().0 <= 21 || self.player_hand.get_value().1 <= 21 {
                 self.dealer_turn();
             }
-            self.determine_winner();
+            let _ = self.determine_winner();
         }
     }
 }
