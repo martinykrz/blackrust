@@ -1,5 +1,25 @@
 use rand::seq::SliceRandom;
+use rand::Rng;
 use std::io;
+
+pub enum GameStatus {
+    Win,
+    Tie,
+    Lose,
+}
+
+pub enum Decision {
+    Stand,
+    Hit,
+    Double,
+    Split,
+    None,
+}
+
+struct Values {
+    main: u8,
+    split: u8
+}
 
 #[derive(Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Card {
@@ -171,9 +191,11 @@ impl Hand {
         }
     }
 
-    fn make_split(&mut self) {
+    fn make_split(&mut self) -> bool {
+        let mut res: bool = false;
         if self.cards.len() == 2 {
             if self.cards.clone().first().unwrap().rank == self.cards.clone().last().unwrap().rank {
+                res = true;
                 let last_card: Option<Card> = self.cards.pop();
                 match last_card {
                     Some(c) => {
@@ -184,26 +206,29 @@ impl Hand {
                 }
             }
         }
+        res
     }
 
-    fn get_value(&mut self) -> (u8, u8) {
-        let mut value_main: u8 = 0;
-        let mut value_split: u8 = 0;
+    fn get_value(&mut self) -> Values {
+        let mut values: Values = Values {
+            main: 0,
+            split: 0
+        };
         for card in self.cards.clone() {
-            value_main += card.value;
+            values.main += card.value;
         }
-        if self.ace_cards && value_main + 10 <= 21 {
-            value_main += 10;
+        if self.ace_cards && values.main + 10 <= 21 {
+            values.main += 10;
         }
         if !self.split.is_empty() {
             for card in self.split.clone() {
-                value_split += card.value;
+                values.split += card.value;
             }
-            if self.ace_split && value_split + 10 <= 21 {
-                value_split += 10;
+            if self.ace_split && values.split + 10 <= 21 {
+                values.split += 10;
             }
         }
-        (value_main, value_split)
+        values
     }
 
     fn clear_hand(&mut self) {
@@ -212,15 +237,14 @@ impl Hand {
     }
 
     fn is_blackjack(&mut self) -> bool {
-        let len: bool = self.cards.len() == 2;
-        let mut res: bool = self.get_value().0 == 21 || self.get_value().1 == 21;
+        let mut res: bool = self.get_value().main == 21 || self.get_value().split == 21;
         for card in self.cards.clone() {
             res &= match card.rank {
                 'A' | 'J' | 'Q' | 'K' => true,
                 _ => false,
             };
         }
-        len && res
+        self.cards.len() == 2 && res
     }
 
     pub fn view_hand(&mut self) {
@@ -229,36 +253,22 @@ impl Hand {
                 card.view_card();
                 print!(", ");
             }
-            println!("\nValue: {}", self.get_value().0);
+            println!("\nValue: {}", self.get_value().main);
         } else {
             print!("Hand 1: ");
             for card in self.cards.clone() {
                 card.view_card();
                 print!(", ");
             }
-            println!("\nValue: {}", self.get_value().0);
+            println!("\nValue: {}", self.get_value().main);
             print!("Hand 2: ");
             for card in self.split.clone() {
                 card.view_card();
                 print!(", ");
             }
-            println!("\nValue: {}", self.get_value().1);
+            println!("\nValue: {}", self.get_value().split);
         }
     }
-}
-
-pub enum GameStatus {
-    Win,
-    Tie,
-    Lose,
-}
-
-pub enum Decision {
-    Stand,
-    Hit,
-    Double,
-    Split,
-    None,
 }
 
 pub struct Game {
@@ -280,9 +290,19 @@ impl Default for Game {
 }
 
 impl Game {
-    fn player_turn(&mut self) {
-        while self.player_hand.get_value().0 < 21 {
-            println!("Hit, sPlit, Stand or Double? ");
+    fn player_decision(&mut self, split: bool) -> bool {
+        let mut res: bool = false;
+        let value: u8 = if split { 
+            self.player_hand.get_value().split 
+        } else { 
+            self.player_hand.get_value().main 
+        };
+        while value < 21 {
+            if split { 
+                println!("Hit, Stand or Double? ") 
+            } else { 
+                println!("Hit, sPlit, Stand or Double? ") 
+            }
             let mut input = String::new();
             io::stdin()
                 .read_line(&mut input)
@@ -292,26 +312,29 @@ impl Game {
                 .parse::<char>();
             match choice {
                 Ok('h') => {
-                    self.player_hand
-                        .add_card(self.deck.hit(), false);
+                    self.player_hand.add_card(self.deck.hit(), split);
                     println!("Player's hand: ");
                     self.player_hand.view_hand();
                 },
                 Ok('d') => {
-                    self.money.double(false);
-                    self.player_hand
-                        .add_card(self.deck.hit(), false);
+                    self.money.double(split);
+                    self.player_hand.add_card(self.deck.hit(), split);
                     println!("Player's hand: ");
                     self.player_hand.view_hand();
                 },
                 Ok('p') => {
-                    self.player_hand.make_split();
-                    if !self.player_hand.split.is_empty() {
-                        self.money.make_bet(true);
-                        println!("Player's hand: ");
-                        self.player_hand.view_hand();
+                    if !split {
+                        if self.player_hand.make_split() {
+                            res = true;
+                            self.money.make_bet(true);
+                            println!("Player's hand: ");
+                            self.player_hand.view_hand();
+                        } else {
+                            println!("Conditions not met to split!");
+                            continue;
+                        }
                     } else {
-                        println!("Conditions not met to split!");
+                        println!("Can't split a split!");
                         continue;
                     }
                 },
@@ -319,84 +342,53 @@ impl Game {
                 _ => continue
             }
         }
-        if !self.player_hand.split.is_empty() {
-            println!("Split Hand");
-            while self.player_hand.get_value().1 < 21 {
-                println!("Hit, Stand or Double? ");
-                let mut input = String::new();
-                io::stdin()
-                    .read_line(&mut input)
-                    .expect("failed to read value");
-                let choice = input
-                    .trim()
-                    .parse::<char>();
-                match choice {
-                    Ok('h') => {
-                        self.player_hand
-                            .add_card(self.deck.hit(), true);
-                        println!("Player's hand: ");
-                        self.player_hand.view_hand();
-                    },
-                    Ok('d') => {
-                        self.money.double(true);
-                        self.player_hand
-                            .add_card(self.deck.hit(), true);
-                        println!("Player's hand: ");
-                        self.player_hand.view_hand();
-                    },
-                    Ok('s') => break,
-                    _ => continue
-                }
-            }
+        res
+    }
+
+    fn player_turn(&mut self) -> bool {
+        let split: bool = self.player_decision(false);
+        if split {
+            let _ = self.player_decision(true);
         }
+        split
     }
 
     fn dealer_turn(&mut self) {
-        while self.dealer_hand.get_value().0 < 17 {
+        while self.dealer_hand.get_value().main < 17 {
             self.dealer_hand.add_card(self.deck.hit(), false);
         }
         println!("Dealer's hand: ");
         self.dealer_hand.view_hand();
     }
 
-    fn determine_winner(&mut self) -> GameStatus {
-        let mut status;
-        let player: (u8, u8) = self.player_hand.get_value();
-        let dealer: u8 = self.dealer_hand.get_value().0;
-        let main_player: u8 = player.0;
-        let other_player: u8 = player.1;
-        
-        let mut player_wins: bool = main_player <= 21 && (dealer > 21 || main_player > dealer);
-        player_wins |= self.player_hand.is_blackjack() && !self.dealer_hand.is_blackjack();
-
-        if player_wins {
+    fn winner(&mut self, output: bool, split: bool) -> GameStatus {
+        let mut status: GameStatus = GameStatus::Lose;
+        let player: Values = self.player_hand.get_value();
+        let dealer: u8 = self.dealer_hand.get_value().main;
+        let value = if split { player.split } else { player.main };
+        let mut wins: bool = value <= 21 && (dealer > 21 || value > dealer);
+        wins |= self.player_hand.is_blackjack() && !self.dealer_hand.is_blackjack();
+        if wins {
             status = GameStatus::Win;
-            println!("You win.");
-            self.money.win(false);
-        } else if dealer > 21 || main_player == dealer {
+            self.money.win(split);
+        } else if dealer > 21 || value == dealer {
             status = GameStatus::Tie;
-            println!("It's a tie");
-        } else {
-            status = GameStatus::Lose;
-            println!("You lose.");
         }
-
-        if other_player != 0 {
-            player_wins = other_player <= 21 && (dealer > 21 || other_player > dealer);
-
-            if player_wins {
-                status = GameStatus::Win;
-                println!("You win.");
-                self.money.win(false);
-            } else if dealer > 21 || other_player == dealer {
-                status = GameStatus::Tie;
-                println!("It's a tie");
-            } else {
-                status = GameStatus::Lose;
-                println!("You lose.");
+        if output {
+            match status {
+                GameStatus::Win => println!("You win."),
+                GameStatus::Tie => println!("It's a tie."),
+                GameStatus::Lose => println!("You lose.")
             }
         }
-            
+        status
+    }
+
+    fn determine_winner(&mut self, output: bool, split: bool) -> Vec<GameStatus> {
+        let mut status: Vec<GameStatus> = vec![self.winner(output, false)];
+        if split {
+            status.push(self.winner(output, true))
+        }
         status
     }
 
@@ -418,9 +410,10 @@ impl Game {
         self.player_hand.view_hand();
     }
 
+    //TODO: Apply split values evaluation
     fn basic_strategy_hard_totals(&mut self) -> Decision {
         let face_up_card: Option<&Card> = self.dealer_hand.cards.first();
-        let player_value = self.player_hand.get_value().0;
+        let player_value = self.player_hand.get_value().main;
         if let Some(card) = face_up_card {
             match card.rank {
                 '2' => { 
@@ -474,14 +467,14 @@ impl Game {
         }
     }
 
+    //TODO: Apply split values evaluation but with each part
     fn basic_strategy_soft_totals(&mut self) -> Decision {
         let face_up_card: Option<&Card> = self.dealer_hand.cards.first();
-        let ace_total: bool = self.player_hand.ace_cards && self.player_hand.cards.len() == 2;
-        let other_player_card: Option<&Card> = if ace_total { self.player_hand.cards.last() } else { None };
+        let other_card: Option<&Card> = self.player_hand.cards.last();
         if let Some(dealer_card) = face_up_card {
             match dealer_card.rank {
                 '2' => {
-                    if let Some(card) = other_player_card {
+                    if let Some(card) = other_card {
                         if card.value > 7 {
                             Decision::Stand
                         } else if card.value == 7 {
@@ -494,7 +487,7 @@ impl Game {
                     }
                 },
                 '3' => {
-                    if let Some(card) = other_player_card {
+                    if let Some(card) = other_card {
                         if card.value > 7 {
                             Decision::Stand
                         } else if card.value > 5 {
@@ -507,7 +500,7 @@ impl Game {
                     }
                 },
                 '4' => {
-                    if let Some(card) = other_player_card {
+                    if let Some(card) = other_card {
                         if card.value > 7 {
                             Decision::Stand
                         } else if card.value > 3 {
@@ -520,7 +513,7 @@ impl Game {
                     }
                 },
                 '5' => {
-                    if let Some(card) = other_player_card {
+                    if let Some(card) = other_card {
                         if card.value > 7 {
                             Decision::Stand
                         } else {
@@ -531,7 +524,7 @@ impl Game {
                     }
                 },
                 '6' => {
-                    if let Some(card) = other_player_card {
+                    if let Some(card) = other_card {
                         if card.value == 9 {
                             Decision::Stand
                         } else {
@@ -542,7 +535,7 @@ impl Game {
                     }
                 },
                 '7' | '8' => {
-                    if let Some(card) = other_player_card {
+                    if let Some(card) = other_card {
                         if card.value > 6 {
                             Decision::Stand
                         } else {
@@ -553,7 +546,7 @@ impl Game {
                     }
                 },
                 _ => {
-                    if let Some(card) = other_player_card {
+                    if let Some(card) = other_card {
                         if card.value > 7 {
                             Decision::Stand
                         } else {
@@ -570,29 +563,152 @@ impl Game {
     }
 
     fn basic_stategy_pairs(&mut self) -> Decision {
-        todo!()
-    }
+        let face_up_card: Option<&Card> = self.dealer_hand.cards.first();
+        let other_card: Option<&Card> = self.player_hand.cards.last();
+        if let Some(dealer_card) = face_up_card {
+            match dealer_card.rank {
+                '2' | '3' | '4' => {
+                    if let Some(card) = other_card {
+                        match card.value {
+                            10 => Decision::Stand,
+                            5 => Decision::Double,
+                            4 => Decision::Hit,
+                            _ => Decision::Split
+                        }
+                    } else {
+                        Decision::None
+                    }
+                },
+                '5' | '6' => {
+                    if let Some(card) = other_card {
+                        match card.value {
+                            10 => Decision::Stand,
+                            5 => Decision::Double,
+                            _ => Decision::Split
+                        }
+                    } else {
+                        Decision::None
+                    }
+                },
+                '7' => {
+                    if let Some(card) = other_card {
+                        match card.value {
+                            10 | 9 => Decision::Stand,
+                            6 | 4 => Decision::Hit,
+                            5 => Decision::Double,
+                            _ => Decision::Split
+                        }
+                    } else {
+                        Decision::None
+                    }
+                },
+                '8' | '9' => {
+                    if let Some(card) = other_card {
+                        match card.value {
+                            10 => Decision::Stand,
+                            5 => Decision::Double,
+                            7 | 6 | 4 | 3 | 2 => Decision::Hit,
+                            _ => Decision::Split
+                        }
+                    } else {
+                        Decision::None
+                    }
+                }
+                _ => {
+                    if let Some(card) = other_card {
+                        match card.value {
+                            10 | 9 => Decision::Stand,
+                            1 | 8 => Decision::Split,
+                            _ => Decision::Hit
+                        }
+                    } else {
+                        Decision::None
+                    }
+                }
+            }
+        } else {
+            Decision::None
+        }
+    } 
 
-    fn decision_making(&mut self) -> Decision {
-        todo!()   
+    fn decision_making(&mut self) {
+        let mut final_decision: Decision;
+        let player_value = self.player_hand.get_value();
+        while player_value.main < 21 || player_value.split < 21 {
+            if self.player_hand.cards.len() == 2 {
+                let first_card = self.player_hand
+                    .cards
+                    .first()
+                    .unwrap();
+                let second_card = self.player_hand
+                    .cards
+                    .last()
+                    .unwrap();
+                if first_card.rank == second_card.rank {
+                    final_decision = self.basic_stategy_pairs();
+                } else if self.player_hand.ace_cards {
+                    final_decision = self.basic_strategy_soft_totals();
+                } else {
+                    final_decision = self.basic_strategy_hard_totals();
+                }
+            } else {
+                final_decision = self.basic_strategy_hard_totals();
+            }
+            match final_decision {
+                Decision::Hit => {
+                    self.player_hand.add_card(self.deck.hit(), false)
+                },
+                Decision::Double => {
+                    self.money.double(false);
+                    self.player_hand.add_card(self.deck.hit(), false)
+                },
+                Decision::Split => {
+                    self.player_hand.make_split();
+                    if !self.player_hand.split.is_empty() {
+                        self.money.split_bet = rand::thread_rng().gen_range(1..=self.money.wallet);
+                    } else {
+                        continue;
+                    }
+                },
+                _ => break
+            }
+        }
     }
 
     pub fn play(&mut self) {
         self.money.make_wallet();
         while self.money.wallet > 0 {
             self.init_game();
-            self.player_turn();
-            if self.player_hand.get_value().0 <= 21 || self.player_hand.get_value().1 <= 21 {
+            let split: bool = self.player_turn();
+            if self.player_hand.get_value().main <= 21 || self.player_hand.get_value().split <= 21 {
                 self.dealer_turn();
             }
-            let _ = self.determine_winner();
+            let _ = self.determine_winner(true, split);
         }
     }
 
-    pub fn basic_strategy_play(&mut self) {
-        self.money.make_wallet();
-        while self.money.wallet > 0 {
-            self.init_game();
+    pub fn basic_strategy_play(&mut self, limit: u32) -> Vec<GameStatus> {
+        let mut status: Vec<GameStatus> = Vec::new();
+        let mut rng = rand::thread_rng();
+        let mut games: u32 = 1;
+        self.money.wallet = rng.gen_range(100..=u32::MAX);
+        while self.money.wallet > 0 && games < limit {
+            self.player_hand.clear_hand();
+            self.dealer_hand.clear_hand();
+            for _ in 0..2 {
+                self.player_hand.add_card(self.deck.hit(), false);
+                self.dealer_hand.add_card(self.deck.hit(), false);
+            }
+            self.money.bet = rng.gen_range(1..=self.money.wallet);
+            self.decision_making();
+            if self.player_hand.get_value().main <= 21 || self.player_hand.get_value().split <= 21 {
+                while self.dealer_hand.get_value().main < 17 {
+                    self.dealer_hand.add_card(self.deck.hit(), false);
+                }       
+            }
+            status.push(self.winner(false, false));
+            games += 1;
         }
+        status
     }
 }
